@@ -172,6 +172,7 @@ class ServerTracker:
 
     async def notice(self):
         self.load_server_status()
+        self.is_stable = 1
         info_string, renew_time_string = self.get_info_string()
 
         if self.is_stable == 1:
@@ -244,22 +245,19 @@ class InvasionTracker:
 
         self.url = "https://toonhq.org/api/v1/invasion/"
         self.embed_color = embed_color.INVASION_INFO_COLOR
-
-        self.invasions = None
-        self.error = None
-        self.last_updated_invasion = None
-        self.ttr_working = None
-        self.average_defeat_rates = {}
+        self.invasions = []
 
 
-    async def notice(self):
-        self.load_invasion_info()
+    async def notice(self, load_json=True):
+        if load_json == True:
+            self.load_invasion_info()
 
         invasion_info_embed = discord.Embed(title="**TTR Realtime Information Board**", color=self.embed_color)
         info_string = "表示されている残り時間は実際とは異なる場合があります。\n"
         invasion_info_embed = invasion_info_embed.add_field(name=":gear: 現在進行中のコグ侵略情報", value=info_string)
         for invasion in self.invasions:
-            cog_name, info_string = self.get_invasion_string(invasion)
+            info_string = self.get_invasion_string(invasion)
+            cog_name = "**{0} {1}**".format(invasion["status"], invasion["cog"])
             invasion_info_embed = invasion_info_embed.add_field(name=cog_name, value=info_string, inline=False)
         renew_time_string = "最終更新　{}".format(datetime.now(timezone(timedelta(hours=+9), "JST")).strftime("%H:%M"))
         invasion_info_embed = invasion_info_embed.set_footer(text=renew_time_string)
@@ -277,25 +275,40 @@ class InvasionTracker:
         await self.invasion_info_message.edit(embed=invasion_info_embed)
     
 
+    async def countdown(self, is_renew=False, interval=1):
+        if is_renew == True:
+            await self.notice(load_json=True)
+        else:
+            for i, invasion in enumerate(self.invasions[:]):
+                if invasion["estimated"] >= 0:
+                    self.invasions[i]["estimated"] -= interval
+            await self.notice(load_json=False)
+
+
     def load_invasion_info(self):
         json_object = JsonStream().get_json_object(self.url)
-        self.invasions = json_object["invasions"]
-        self.error = json_object["meta"]["error"]
-        self.last_updated_invasion = json_object["meta"]["last_updated"]
-        self.ttr_working = json_object["meta"]["ttr_working"]
+        self.invasions = []
 
-        for invasion in self.invasions:
-            invasion_id = invasion["id"]
-            defeat_rate = invasion["defeat_rate"]
+        for invasion in json_object["invasions"]:
 
-            if invasion_id in self.average_defeat_rates:
-                count = self.average_defeat_rates[invasion_id]["count"]
-                average = self.average_defeat_rates[invasion_id]["average"]
-                self.average_defeat_rates[invasion_id]["average"] = \
-                    (count * average + defeat_rate) / (count + 1)
-                self.average_defeat_rates[invasion_id]["count"] += 1
+            progress = invasion["defeated"] / invasion["total"]
+            if progress < 0.75:
+                status = ":green_circle:"
+            elif 0.75 <= progress < 0.9:
+                status = ":yellow_circle:"
             else:
-                self.average_defeat_rates[invasion_id] = {"average": defeat_rate, "count": 1}
+                status = ":red_circle:"
+            invasion["status"] = status
+
+            # HACK: Is this correct to check mega invasions?
+            if invasion["total"] == 1000000:
+                invasion["is_mega"] = True
+                invasion["estimated"] = -1000000
+            else:
+                invasion["is_mega"] = False
+                invasion["estimated"] = (invasion["total"] - invasion["defeated"]) / invasion["defeat_rate"]
+
+            self.invasions.append(invasion)
 
     
     def convert_sec_to_timestr(self, left_sec):
@@ -315,37 +328,22 @@ class InvasionTracker:
         return time_string
 
     
-    def get_invasion_string(self, invasion_dict: dict):
-        invasion_id = invasion_dict["id"]
-        defeated = invasion_dict["defeated"]
-        total = invasion_dict["total"]
-        district = invasion_dict["district"]
-        cog_name = invasion_dict["cog"]
-
-        progress = defeated / total
-        if progress < 0.75:
-            cog_name = ":green_circle: **{}**".format(cog_name)
-        elif 0.75 <= progress < 0.9:
-            cog_name = ":yellow_circle: **{}**".format(cog_name)
-        else:
-            cog_name = ":red_circle: **{}**".format(cog_name)
-
-        if total == 1000000:  # HACK: Is this correct to check mega invasions?
+    def get_invasion_string(self, invasion: dict):
+        if invasion["is_mega"] == True:
             time_string = "MEGA INVASION!"
             defeat_string = "---"
         else:
-            estimated = (total - defeated) / self.average_defeat_rates[invasion_id]["average"]
-            time_string = self.convert_sec_to_timestr(estimated)
-            defeat_string = "{0} / {1}".format(defeated, total)
+            time_string = self.convert_sec_to_timestr(invasion["estimated"])
+            defeat_string = "{0} / {1}".format(invasion["defeated"], invasion["total"])
 
-        info_string = "ロビー ： **{}**\n".format(district)
+        info_string = "ロビー ： **{}**\n".format(invasion["district"])
         info_string += "残り時間 ： **{}**\n".format(time_string)
         info_string += "倒されたコグの数 ： **{}**\n\n".format(defeat_string)
 
-        return cog_name, info_string
+        return info_string
 
     
-    #HACK: This method is just used for DistrictTracker.
+    # HACK: This method is just used for DistrictTracker.
     def get_invasions(self):
         self.load_invasion_info()
         return self.invasions

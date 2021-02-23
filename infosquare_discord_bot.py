@@ -32,6 +32,7 @@ async def on_ready():
     global invasion_tracker
     global server_tracker
     global seaturtle_supporter
+    global invasion_countup
 
     bot_user = client.user
 
@@ -46,14 +47,26 @@ async def on_ready():
 
     renew_infomation.start()
 
+    invasion_countup = 0
+    countdown.start()
+
     print("Login suceeded.")
 
 
 @tasks.loop(seconds=10)
 async def renew_infomation():
     await district_tracker.notice()
-    await invasion_tracker.notice()
     await server_tracker.notice()
+
+
+@tasks.loop(seconds=1)
+async def countdown():
+    global invasion_countup
+    renew_interval = 10
+
+    is_renew = True if invasion_countup % renew_interval == 0 else False
+    await invasion_tracker.countdown(interval=1, is_renew=is_renew)
+    invasion_countup += 1
 
 
 @client.event
