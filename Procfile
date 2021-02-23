@@ -1,0 +1,1 @@
+discordbot: python infosquare_discord_bot.py
