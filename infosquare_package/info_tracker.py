@@ -179,6 +179,8 @@ class ServerTracker:
             color = embed_color.SERVER_INFO_STABLE_COLOR
         elif self.is_stable == 2:
             color = embed_color.SERVER_INFO_ISSUE_COLOR
+        elif self.is_stable == 3:
+            color = embed_color.SERVER_INFO_OUTAGE_COLOR
         else:
             color = embed_color.SERVER_INFO_DOWN_COLOR
         
@@ -224,8 +226,11 @@ class ServerTracker:
         elif string == "Performance Issues":
             self.is_stable = 2 if self.is_stable < 2 else self.is_stable
             return ":warning:"
-        else:
+        elif string == "Partial Outage":
             self.is_stable = 3 if self.is_stable < 3 else self.is_stable
+            return ":exclamation:"
+        else:
+            self.is_stable = 4 if self.is_stable < 4 else self.is_stable
             return ":x:"
 
 
