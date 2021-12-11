@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 import discord
@@ -6,8 +5,9 @@ from discord.ext import tasks
 
 from infosquare_package.autodelete import AutoDeleteObserver
 from infosquare_package.connect4 import Connect4GameMaster
-from infosquare_package.info_tracker import (DistrictTracker, InvasionTracker,
-                                             ServerTracker)
+from infosquare_package.info_tracker import (DistrictTracker,
+                                             FieldOfficeTracker,
+                                             InvasionTracker, ServerTracker)
 from infosquare_package.minesweeper import MinesweeperGameMaster
 from infosquare_package.seaturtle_soup import SeaTurtleSoupSupporter
 from infosquare_package.wordwolf import WordWolfGameMaster
@@ -19,6 +19,8 @@ TOKEN = os.environ["INFOSQUARE_BOT_TOKEN"]
 DISTRICT_CHANNEL_ID = int(os.environ["DISTRICT_CHANNEL_ID"])
 INVASION_CHANNEL_ID = int(os.environ["INVASION_CHANNEL_ID"])
 SERVER_CHANNEL_ID = int(os.environ["SERVER_CHANNEL_ID"])
+FIELDOFFICE_CHANNEL_ID = int(os.environ["FIELDOFFICE_CHANNEL_ID"])
+DEBUG_ID = int(os.environ["DEBUG_ID"])
 
 autodelete_observer = AutoDeleteObserver()
 connect4_gamemaster = Connect4GameMaster()
@@ -31,6 +33,7 @@ async def on_ready():
     global district_tracker
     global invasion_tracker
     global server_tracker
+    global fieldoffice_tracker
     global seaturtle_supporter
     global invasion_countup
 
@@ -42,6 +45,8 @@ async def on_ready():
     invasion_tracker = InvasionTracker(invasion_info_channel=invasion_info_channel, bot_user=bot_user)
     server_info_channel = client.get_channel(SERVER_CHANNEL_ID)
     server_tracker = ServerTracker(server_info_channel=server_info_channel, bot_user=bot_user)
+    fieldoffice_info_channel = client.get_channel(FIELDOFFICE_CHANNEL_ID)
+    fieldoffice_tracker = FieldOfficeTracker(fieldoffice_info_channel=fieldoffice_info_channel, bot_user=bot_user)
 
     seaturtle_supporter = SeaTurtleSoupSupporter(bot_user=bot_user)
 
@@ -57,6 +62,7 @@ async def on_ready():
 async def renew_infomation():
     await district_tracker.notice()
     await server_tracker.notice()
+    await fieldoffice_tracker.notice()
 
 
 @tasks.loop(seconds=1)
@@ -175,6 +181,10 @@ async def on_message(message):
         """
         if message.content in ["/minesweeper", "/Minesweeper", "/マインスイーパー", "/マインスイーパ", "/まいんすいーぱー", "/まいんすいーぱ"]:
             await minesweeper_gamemaster.start_new_game(message, in_dm_channel=True)
+
+        # TODO: Make debug option.
+        #sended_time = datetime.now(timezone(timedelta(hours=+9), "JST")).strftime("%Y/%m/%d %H:%M:%S")
+        #await client.get_user(DEBUG_ID).send(f"{sended_time}\n**{message.author}**\n{message.content}")
 
 
 @client.event

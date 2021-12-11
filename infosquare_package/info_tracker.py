@@ -4,6 +4,7 @@ Information tracker
 author: Snow Rabbit
 """
 
+import operator
 from datetime import datetime, timedelta, timezone
 
 import discord
@@ -352,3 +353,109 @@ class InvasionTracker:
     def get_invasions(self):
         self.load_invasion_info()
         return self.invasions
+
+
+
+# TODO: Make super class for Tracker.
+class FieldOfficeTracker:
+
+    def __init__(self, fieldoffice_info_channel, bot_user):
+        self.fieldoffice_info_channel = fieldoffice_info_channel
+        self.bot_user = bot_user
+        self.fieldoffice_info_message = None
+
+        self.url = "https://www.toontownrewritten.com/api/fieldoffices"
+        self.embed_color = embed_color.FIELDOFFICE_INFO_COLOR
+        self.progress = {}
+
+        self.zoneid_lookup = {
+            "3100": "Walrus Way", "3200": "Sleet Street", "3300": "Polar Place",
+            "4100": "Alto Avenue", "4200": "Baritone Boulevard", "4300": "Tenor Terrace",
+            "5100": "Elm Street", "5200": "Maple Street", "5300": "Oak Street",
+            "9100": "Lullaby Lane", "9200": "Pajama Place"
+        }
+
+
+    async def notice(self):
+        self.load_information()
+        info_string, renew_time_string = self.get_info_string()
+        fieldoffice_info_embed = discord.Embed(title="**TTR Realtime Information Board**", color=self.embed_color)
+        fieldoffice_info_embed = fieldoffice_info_embed.add_field(name=":office: Field office", value=info_string)
+        fieldoffice_info_embed = fieldoffice_info_embed.set_footer(text=renew_time_string)
+
+        if self.fieldoffice_info_message is None:
+            history = await self.fieldoffice_info_channel.history().flatten()
+            if len(history) == 1 and history[0].author.id == self.bot_user.id:
+                self.fieldoffice_info_message = history[0]
+            else:
+                await self.fieldoffice_info_channel.purge(limit=None)
+                self.fieldoffice_info_message = await self.fieldoffice_info_channel.send(embed=fieldoffice_info_embed)
+                return
+
+        await self.fieldoffice_info_message.edit(embed=fieldoffice_info_embed)
+
+    
+    def load_information(self):
+        self.progress = JsonStream().get_json_object(self.url)
+
+    
+    def convert_number_to_emoji(self, number: int):
+        number_str = str(number)
+        emoji_string = ":black_large_square:" * (3 - len(number_str))
+        for x in str(number):
+            if x == "0":
+                emoji_string += ":zero:"
+            elif x == "1":
+                emoji_string += ":one:"
+            elif x == "2":
+                emoji_string += ":two:"
+            elif x == "3":
+                emoji_string += ":three:"
+            elif x == "4":
+                emoji_string += ":four:"
+            elif x == "5":
+                emoji_string += ":five:"
+            elif x == "6":
+                emoji_string += ":six:"
+            elif x == "7":
+                emoji_string += ":seven:"
+            elif x == "8":
+                emoji_string += ":eight:"
+            elif x == "9":
+                emoji_string += ":nine:"
+
+        return emoji_string
+
+    
+    def get_fieldoffice_strings(self):
+        fieldoffice_list = []
+        for street_id, office in self.progress["fieldOffices"].items():
+            fieldoffice_list.append({
+                "difficulty": office["difficulty"] + 1,
+                "annexes": office["annexes"],
+                "street": self.zoneid_lookup[street_id],
+                "open": office["open"]
+            })
+
+        fieldoffice_list = sorted(fieldoffice_list, key=operator.itemgetter("difficulty", "annexes"))
+
+        fieldoffice_string = ""
+        for office in fieldoffice_list:
+            is_open = ":green_circle:" if office["open"] else ":x:"
+            stars = ":black_large_square:" * (3 - office["difficulty"]) + ":star:" * office["difficulty"]
+            annexes = self.convert_number_to_emoji(office["annexes"])
+            street = office["street"]
+            fieldoffice_string += f"{is_open}　{stars}　{annexes}　{street}\n"
+        
+        return fieldoffice_string
+
+    
+    def get_info_string(self):
+        info_string = ""
+        info_string += ":black_large_square:　**難易度** 　　**Annexes**　**Street**\n"
+        info_string += self.get_fieldoffice_strings()
+        info_string += "\n:green_circle:：Open\n" + \
+                       ":x:：Closed\n\n"
+        renew_time_string = "最終更新　{}".format(datetime.now(timezone(timedelta(hours=+9), "JST")).strftime("%H:%M"))
+        
+        return info_string, renew_time_string
