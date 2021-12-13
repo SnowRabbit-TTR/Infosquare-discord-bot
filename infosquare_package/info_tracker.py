@@ -5,223 +5,217 @@ author: Snow Rabbit
 """
 
 import operator
+from abc import abstractmethod
 from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional, Union
 
 import discord
+from bs4.element import ResultSet
+from discord.channel import TextChannel
+from discord.embeds import Embed
+from discord.message import Message
+from discord.user import ClientUser
 
 from . import embed_color
 from .util.web_stream import HTMLStream, JsonStream
 
 
-class DistrictTracker:
+class Tracker:
+    """Tracker
+    ----------
 
-    def __init__(self, district_info_channel, bot_user):
-        self.district_info_channel = district_info_channel
-        self.bot_user = bot_user
-        self.district_info_message = None
+    Super class of the tracker that collect and display information.
+    The subclasses need to implement `load_information` and `make_info_strings`.
 
-        self.url = "https://toontownrewritten.com/api/population"
-        self.invasions_tracker = InvasionTracker(invasion_info_channel=None, bot_user=None)
-        self.embed_color = embed_color.DISTRICT_INFO_COLOR
+    Attributes:
+        info_channel (:class:`TextChannel`):
+            Channel to display information.
+        bot_user (:class:`ClientUser`):
+            The bot user to be used for tracking.
+        info_message (:class:`Optional[Message]`):
+            Message displaying information.
+            It is set to None at initialization.
+        embed_color: (:class:`int`): 
+            Hex value of color for `discord.Embed`.
+        embed_field_tytle: (:class:`str`): 
+            Title string of the information.
+            (It is not the `title` argument of `discord.Embed`.)
+            Defined in the subclasses and used inside `make_info_strings`.
 
-        self.last_updated_population = None
-        self.total_population = None
-        self.population_by_district = None
-        self.invasions = None
+    """
 
+    def __init__(self, info_channel: TextChannel, bot_user: ClientUser) -> None:
+        self.info_channel: TextChannel = info_channel
+        self.bot_user: ClientUser = bot_user
+        self.info_message: Optional[Message] = None
+        self.embed_color: int
+        self.embed_field_tytle: str
 
-    async def notice(self):
-        self.load_information()
-        info_string, renew_time_string = self.get_info_string()
-        district_info_embed = discord.Embed(title="**TTR Realtime Information Board**", color=self.embed_color)
-        district_info_embed = district_info_embed.add_field(name=":park: ロビー情報", value=info_string)
-        district_info_embed = district_info_embed.set_footer(text=renew_time_string)
+    
+    def make_embed(self, info_string_list: List[Dict[str, str]]) -> Embed:
+        info_embed = discord.Embed(title="**TTR Realtime Information Board**", color=self.embed_color)
+        for info_string in info_string_list:
+            info_embed.add_field(name=info_string["name"], value=info_string["value"], inline=False)
+        renew_time_string = f"最終更新　{datetime.now(timezone(timedelta(hours=+9), 'JST')).strftime('%H:%M')}"
+        info_embed = info_embed.set_footer(text=renew_time_string)
+        
+        return info_embed
 
-        if self.district_info_message is None:
-            history = await self.district_info_channel.history().flatten()
+    
+    async def notice(self) -> None:
+        # HACK: Shouldn't handle 'load_information' in 'notice'.
+        if type(self) is not InvasionTracker:
+            self.load_information()
+        info_string_list = self.make_info_strings()
+        info_embed = self.make_embed(info_string_list)
+
+        if self.info_message is None:
+            history = await self.info_channel.history().flatten()
             if len(history) == 1 and history[0].author.id == self.bot_user.id:
-                self.district_info_message = history[0]
+                self.info_message = history[0]
             else:
-                await self.district_info_channel.purge(limit=None)
-                self.district_info_message = await self.district_info_channel.send(embed=district_info_embed)
+                await self.info_channel.purge(limit=None)
+                self.info_message = await self.info_channel.send(embed=info_embed)
                 return
 
-        await self.district_info_message.edit(embed=district_info_embed)
-    
-    
-    def load_information(self):
-        json_object = JsonStream().get_json_object(self.url)
+        await self.info_message.edit(embed=info_embed)
 
-        self.last_updated_population = json_object["lastUpdated"]
+
+    @abstractmethod
+    def load_information(self) -> None:
+        raise NotImplementedError()
+
+
+    @abstractmethod
+    def make_info_strings(self) -> List[Dict[str, str]]:
+        raise NotImplementedError()
+
+
+    def load_data_api(self, url: str) -> dict:
+        return JsonStream().get_json_object(url=url)
+
+
+    def load_data_scraping(self, url: str) -> ResultSet:
+        return HTMLStream().get_soup_object(url=url, soup_class="list-group-item sub-component")
+
+    
+    def convert_number_to_emoji(self, number: Union[int, str]) -> str:
+        num2emoji = {
+            "1": ":one:", "2": ":two:", "3": ":three:",
+            "4": ":four:", "5": ":five:", "6": ":six:",
+            "7": ":seven:", "8": ":eight:", "9": ":nine:",
+            "0": ":zero:"
+        }
+        emoji_string = ""
+        for num in str(number):
+            emoji_string += num2emoji[num]
+
+        return emoji_string
+
+    
+    def convert_number_to_fullwidth(self, number: Union[int, str]) -> str:
+        return str(number).translate(
+                    str.maketrans({chr(0x0021 + i): chr(0xFF01 + i) for i in range(94)})
+               ).replace(" ", "\u3000")
+
+
+class DistrictTracker(Tracker):
+
+    def __init__(self, info_channel: TextChannel, bot_user: ClientUser) -> None:
+        super().__init__(info_channel, bot_user)
+        self.embed_color: int = embed_color.DISTRICT_INFO_COLOR
+        self.embed_field_tytle: str = ":park: ロビー情報"
+        self.url: str = "https://toontownrewritten.com/api/population"
+
+        self.total_population: int
+        self.population_by_district: list
+        self.invasions: list
+
+        # HACK: There is no need to create an InvasionTracker instance just to find out invasion information.
+        self.invasions_tracker = InvasionTracker(info_channel=None, bot_user=None)
+    
+
+    def load_information(self) -> None:
+        json_object = self.load_data_api(url=self.url)
         self.total_population = json_object["totalPopulation"]
         self.population_by_district = sorted(json_object["populationByDistrict"].items())
         self.invasions = self.invasions_tracker.get_invasions()
 
     
-    def get_info_string(self):
-        info_string = ""
+    def make_info_strings(self) -> List[Dict[str, str]]:
         all_population_emoji = self.convert_number_to_emoji(self.total_population)
-        info_string += "現在の総プレイ人口：{}人\n\n".format(all_population_emoji)
-        info_string += "　　人口　　　　ロビー\n"
-        info_string += self.get_district_strings()
-        info_string += "\n:speech_balloon:：スピードチャットのみ使用可能\n" + \
+        info_string = f"現在の総プレイ人口：{all_population_emoji}人\n\n" + \
+                       "　　人口　　　　ロビー\n" + \
+                      f"{self.make_district_string()}" + \
+                       "\n:speech_balloon:：スピードチャットのみ使用可能\n" + \
                        ":shield:：特定のイベントが開催されない\n" + \
                        ":sparkles:：召喚によるコグの侵略が発生しない\n" + \
                        ":gear:：コグの侵略が進行中\n\n"
-        renew_time_string = "最終更新　{}".format(datetime.now(timezone(timedelta(hours=+9), "JST")).strftime("%H:%M"))
         
-        return info_string, renew_time_string
+        return [{"name": self.embed_field_tytle, "value": info_string}]
 
-
-    def convert_number_to_emoji(self, number: int):
-        emoji_string = ""
-        for x in str(number):
-            if x == "0":
-                emoji_string += ":zero:"
-            elif x == "1":
-                emoji_string += ":one:"
-            elif x == "2":
-                emoji_string += ":two:"
-            elif x == "3":
-                emoji_string += ":three:"
-            elif x == "4":
-                emoji_string += ":four:"
-            elif x == "5":
-                emoji_string += ":five:"
-            elif x == "6":
-                emoji_string += ":six:"
-            elif x == "7":
-                emoji_string += ":seven:"
-            elif x == "8":
-                emoji_string += ":eight:"
-            elif x == "9":
-                emoji_string += ":nine:"
-
-        return emoji_string
-
-
-    def get_district_strings(self):
-        status_emoji = ""
+    
+    def make_district_string(self) -> str:
+        status_string = ""
         for pd in self.population_by_district:
             if pd[1] <= 300:
-                status_emoji += ":blue_circle: "
+                status_string += ":blue_circle: "
             elif pd[1] > 500:
-                status_emoji += ":red_circle: "
+                status_string += ":red_circle: "
             else:
-                status_emoji += ":green_circle: "
+                status_string += ":green_circle: "
 
-            for x in str(pd[1]).rjust(3):
-                if x == " ":
-                    status_emoji += "　"
-                elif x == "0":
-                    status_emoji += "０"
-                elif x == "1":
-                    status_emoji += "１"
-                elif x == "2":
-                    status_emoji += "２"
-                elif x == "3":
-                    status_emoji += "３"
-                elif x == "4":
-                    status_emoji += "４"
-                elif x == "5":
-                    status_emoji += "５"
-                elif x == "6":
-                    status_emoji += "６"
-                elif x == "7":
-                    status_emoji += "７"
-                elif x == "8":
-                    status_emoji += "８"
-                elif x == "9":
-                    status_emoji += "９"
+            status_string += self.convert_number_to_fullwidth(str(pd[1]).rjust(3))
+            status_string += f"　　**{pd[0]}** "
+
+            if pd[0] in ["Boingbury", "Gulp Gulch", "Whoosh Rapids"]:
+                status_string += ":speech_balloon:"
+            if pd[0] in ["Blam Canyon", "Fizzlefield", "Gulp Gulch", "Splat Summit", "Zapwood"]:
+                status_string += ":shield:"
+            if pd[0] in ["Gulp Gulch", "Splat Summit"]:
+                status_string += ":sparkles:"
             
-            status_emoji += "　　**{}** ".format(pd[0])
-
-            if pd[0] == "Blam Canyon":
-                status_emoji += ":shield:"
-            elif pd[0] == "Boingbury":
-                status_emoji += ":speech_balloon:"
-            elif pd[0] == "Fizzlefield":
-                status_emoji += ":shield:"
-            elif pd[0] == "Gulp Gulch":
-                status_emoji += ":speech_balloon:" + ":shield:" + ":sparkles:"
-            elif pd[0] == "Splat Summit":
-                status_emoji += ":shield:" + ":sparkles:"
-            elif pd[0] == "Whoosh Rapids":
-                status_emoji += ":speech_balloon:"
-
-            # HACK: Checking invasions method is too dirty.
+            # HACK: Need refactoring.
             if pd[0] in str(self.invasions):
-                status_emoji += ":gear:"
-            
-            status_emoji += "\n"
-        
-        return status_emoji  
+                status_string += ":gear:"
+                
+            status_string += "\n"
+
+        return status_string
 
 
+class ServerTracker(Tracker):
 
-class ServerTracker:
+    def __init__(self, info_channel: TextChannel, bot_user: ClientUser) -> None:
+        super().__init__(info_channel, bot_user)
+        self.embed_field_tytle: str = ":chart_with_downwards_trend: サーバー稼働状況"
+        self.url: str = "https://status.toontownrewritten.com/"
 
-    def __init__(self, server_info_channel, bot_user: int):
-        self.server_info_channel = server_info_channel
-        self.bot_user = bot_user
-        self.server_info_message = None
+        self.pr_soup: ResultSet = None
+        self.is_stable: int = 1
 
-        self.url = "https://status.toontownrewritten.com/"
-        self.pr_soup = None
-        self.is_stable = 1
-
-
-    async def notice(self):
-        self.load_server_status()
-        self.is_stable = 1
-        info_string, renew_time_string = self.get_info_string()
-
-        if self.is_stable == 1:
-            color = embed_color.SERVER_INFO_STABLE_COLOR
-        elif self.is_stable == 2:
-            color = embed_color.SERVER_INFO_ISSUE_COLOR
-        elif self.is_stable == 3:
-            color = embed_color.SERVER_INFO_OUTAGE_COLOR
-        else:
-            color = embed_color.SERVER_INFO_DOWN_COLOR
-        
-        server_info_embed = discord.Embed(title="**TTR Realtime Information Board**", color=color)
-        server_info_embed = server_info_embed.add_field(name=":chart_with_downwards_trend: サーバー稼働状況", value=info_string)
-        server_info_embed = server_info_embed.set_footer(text=renew_time_string)
-
-        # First sending after initialize.
-        if self.server_info_message is None:
-            history = await self.server_info_channel.history().flatten()
-            if len(history) == 1 and history[0].author.id == self.bot_user.id:
-                self.server_info_message = history[0]
-            else:
-                await self.server_info_channel.purge(limit=None)
-                self.server_info_message = await self.server_info_channel.send(embed=server_info_embed)
-                return
-
-        await self.server_info_message.edit(embed=server_info_embed)
-
-
-    def load_server_status(self):
-        self.pr_soup = HTMLStream().get_soup_object(url=self.url, soup_class="list-group-item sub-component")
-
-
-    def get_info_string(self):
-        info_string = "\n**Game Servers**\n"
-        info_string += self.get_status_emoji(self.pr_soup[1].small.string) + " ゲームサーバー\n"
-        info_string += self.get_status_emoji(self.pr_soup[2].small.string) + " スピードチャット＋\n"
-        info_string += self.get_status_emoji(self.pr_soup[3].small.string) + " ゲームサービス全般\n"
-        info_string += "\n**Website**\n"
-        info_string += self.get_status_emoji(self.pr_soup[4].small.string) + " ダウンロードサーバー\n"
-        info_string += self.get_status_emoji(self.pr_soup[5].small.string) + " 公式ホームページ/ログインサーバー\n"
-        info_string += "\n**Support System**\n"
-        info_string += self.get_status_emoji(self.pr_soup[0].small.string) + " メールサポート\n"
-        renew_time_string = "最終更新　{}".format(datetime.now(timezone(timedelta(hours=+9), "JST")).strftime("%H:%M"))
-        
-        return info_string, renew_time_string
     
+    def load_information(self) -> None:
+        self.pr_soup = self.load_data_scraping(url=self.url)
+
     
-    def get_status_emoji(self, string):
+    def make_info_strings(self) -> List[Dict[str, str]]:
+        info_string = "\n**Game Servers**\n" + \
+                      self.get_status_emoji(self.pr_soup[1].small.string) + " ゲームサーバー\n" + \
+                      self.get_status_emoji(self.pr_soup[2].small.string) + " スピードチャット＋\n" + \
+                      self.get_status_emoji(self.pr_soup[3].small.string) + " ゲームサービス全般\n" + \
+                      "\n**Website**\n" + \
+                      self.get_status_emoji(self.pr_soup[4].small.string) + " ダウンロードサーバー\n" + \
+                      self.get_status_emoji(self.pr_soup[5].small.string) + " 公式ホームページ/ログインサーバー\n" + \
+                      "\n**Support System**\n" + \
+                      self.get_status_emoji(self.pr_soup[0].small.string) + " メールサポート\n"
+        
+        self.set_embed_color()
+
+        return [{"name": self.embed_field_tytle, "value": info_string}]
+
+    
+    def get_status_emoji(self, string: str) -> str:
         if string == "Operational":
             return ":white_check_mark:"
         elif string == "Performance Issues":
@@ -234,65 +228,31 @@ class ServerTracker:
             self.is_stable = 4 if self.is_stable < 4 else self.is_stable
             return ":x:"
 
-
-
-# TODO: Remake GroupTracker
-class GroupTracker:
-    pass
-
-
-
-class InvasionTracker:
-
-    def __init__(self, invasion_info_channel, bot_user):
-        self.invasion_info_channel = invasion_info_channel
-        self.bot_user = bot_user
-        self.invasion_info_message = None
-
-        self.url = "https://toonhq.org/api/v1/invasion/"
-        self.embed_color = embed_color.INVASION_INFO_COLOR
-        self.invasions = []
-
-
-    async def notice(self, load_json=True):
-        if load_json == True:
-            self.load_invasion_info()
-
-        invasion_info_embed = discord.Embed(title="**TTR Realtime Information Board**", color=self.embed_color)
-        info_string = "表示されている残り時間は実際とは異なる場合があります。\n"
-        invasion_info_embed = invasion_info_embed.add_field(name=":gear: 現在進行中のコグ侵略情報", value=info_string)
-        for invasion in self.invasions:
-            info_string = self.get_invasion_string(invasion)
-            cog_name = "**{0} {1}**".format(invasion["status"], invasion["cog"])
-            invasion_info_embed = invasion_info_embed.add_field(name=cog_name, value=info_string, inline=False)
-        renew_time_string = "最終更新　{}".format(datetime.now(timezone(timedelta(hours=+9), "JST")).strftime("%H:%M"))
-        invasion_info_embed = invasion_info_embed.set_footer(text=renew_time_string)
-
-        # First sending after initialize.
-        if self.invasion_info_message is None:
-            history = await self.invasion_info_channel.history().flatten()
-            if len(history) == 1 and history[0].author.id == self.bot_user.id:
-                self.invasion_info_message = history[0]
-            else:
-                await self.invasion_info_channel.purge(limit=None)
-                self.invasion_info_message = await self.invasion_info_channel.send(embed=invasion_info_embed)
-                return
-
-        await self.invasion_info_message.edit(embed=invasion_info_embed)
-    
-
-    async def countdown(self, is_renew=False, interval=1):
-        if is_renew == True:
-            await self.notice(load_json=True)
+        
+    def set_embed_color(self) -> None:
+        if self.is_stable == 1:
+            self.embed_color = embed_color.SERVER_INFO_STABLE_COLOR
+        elif self.is_stable == 2:
+            self.embed_color = embed_color.SERVER_INFO_ISSUE_COLOR
+        elif self.is_stable == 3:
+            self.embed_color = embed_color.SERVER_INFO_OUTAGE_COLOR
         else:
-            for i, invasion in enumerate(self.invasions[:]):
-                if invasion["estimated"] >= 0:
-                    self.invasions[i]["estimated"] -= interval
-            await self.notice(load_json=False)
+            self.embed_color = embed_color.SERVER_INFO_DOWN_COLOR
 
 
-    def load_invasion_info(self):
-        json_object = JsonStream().get_json_object(self.url)
+class InvasionTracker(Tracker):
+
+    def __init__(self, info_channel: TextChannel, bot_user: ClientUser) -> None:
+        super().__init__(info_channel, bot_user)
+        self.embed_color: int = embed_color.INVASION_INFO_COLOR
+        self.embed_field_tytle: str = ":gear: 現在進行中のコグ侵略情報"
+        self.url: str = "https://toonhq.org/api/v1/invasion/"
+
+        self.invasions: list = []
+
+    
+    def load_information(self) -> None:
+        json_object = self.load_data_api(self.url)
         self.invasions = []
 
         for invasion in json_object["invasions"]:
@@ -317,145 +277,125 @@ class InvasionTracker:
             self.invasions.append(invasion)
 
     
-    def convert_sec_to_timestr(self, left_sec):
+    def make_info_strings(self) -> List[Dict[str, str]]:
+        info_string_list = [{
+            "name": self.embed_field_tytle,
+            "value": "表示されている残り時間は実際と異なる場合があります。\n"
+        }]
+        for invasion in self.invasions:
+            cog_name = f"**{invasion['status']} {invasion['cog']}**"
+            info_string = self.get_invasion_string(invasion)
+            info_string_list.append({
+                "name": cog_name,
+                "value": info_string
+            })
+        
+        return info_string_list
+
+    
+    async def countdown(self, interval: int=1) -> None:
+        for i, invasion in enumerate(self.invasions[:]):
+            if invasion["estimated"] >= 0:
+                self.invasions[i]["estimated"] -= interval
+        await self.notice()
+
+
+    def get_invasion_string(self, invasion: dict) -> str:
+        if invasion["is_mega"] == True:
+            time_string = "MEGA INVASION!"
+            defeat_string = "---"
+        else:
+            time_string = self.convert_sec_to_timestr(invasion["estimated"])
+            defeat_string = f"{invasion['defeated']} / {invasion['total']}"
+
+        info_string = f"ロビー ： **{invasion['district']}**\n" + \
+                      f"残り時間 ： **{time_string}**\n" + \
+                      f"倒されたコグの数 ： **{defeat_string}**\n\n"
+
+        return info_string
+
+    
+    def convert_sec_to_timestr(self, left_sec: str) -> str:
         if left_sec < 30:
             return "まもなく終了"
         
         time_string = ""
         if left_sec > 3600:
             hour = int(left_sec / 3600)
-            time_string += "{} : ".format(hour)
+            time_string += f"{hour} : "
             left_sec = left_sec - 3600 * hour
         minute = int(left_sec / 60)
-        time_string += "{:02} : ".format(minute)
+        time_string += f"{minute:02} : "
         second = int(left_sec - minute * 60)
-        time_string += "{:02}".format(second)
+        time_string += f"{second:02}"
 
         return time_string
 
     
-    def get_invasion_string(self, invasion: dict):
-        if invasion["is_mega"] == True:
-            time_string = "MEGA INVASION!"
-            defeat_string = "---"
-        else:
-            time_string = self.convert_sec_to_timestr(invasion["estimated"])
-            defeat_string = "{0} / {1}".format(invasion["defeated"], invasion["total"])
-
-        info_string = "ロビー ： **{}**\n".format(invasion["district"])
-        info_string += "残り時間 ： **{}**\n".format(time_string)
-        info_string += "倒されたコグの数 ： **{}**\n\n".format(defeat_string)
-
-        return info_string
-
-    
     # HACK: This method is just used for DistrictTracker.
-    def get_invasions(self):
-        self.load_invasion_info()
+    def get_invasions(self) -> dict:
+        self.load_information()
         return self.invasions
 
 
+class FieldOfficeTracker(Tracker):
 
-# TODO: Make super class for Tracker.
-class FieldOfficeTracker:
+    def __init__(self, info_channel: TextChannel, bot_user: ClientUser) -> None:
+        super().__init__(info_channel, bot_user)
+        self.embed_color: int = embed_color.FIELDOFFICE_INFO_COLOR
+        self.embed_field_tytle: str = ":office: Field Office情報"
+        self.url: str = "https://www.toontownrewritten.com/api/fieldoffices"
 
-    def __init__(self, fieldoffice_info_channel, bot_user):
-        self.fieldoffice_info_channel = fieldoffice_info_channel
-        self.bot_user = bot_user
-        self.fieldoffice_info_message = None
-
-        self.url = "https://www.toontownrewritten.com/api/fieldoffices"
-        self.embed_color = embed_color.FIELDOFFICE_INFO_COLOR
-        self.progress = {}
-
-        self.zoneid_lookup = {
+        self.fieldoffice_list: list
+        self.zoneid_dict: dict = {
             "3100": "Walrus Way", "3200": "Sleet Street", "3300": "Polar Place",
             "4100": "Alto Avenue", "4200": "Baritone Boulevard", "4300": "Tenor Terrace",
             "5100": "Elm Street", "5200": "Maple Street", "5300": "Oak Street",
             "9100": "Lullaby Lane", "9200": "Pajama Place"
         }
 
-
-    async def notice(self):
-        self.load_information()
-        info_string, renew_time_string = self.get_info_string()
-        fieldoffice_info_embed = discord.Embed(title="**TTR Realtime Information Board**", color=self.embed_color)
-        fieldoffice_info_embed = fieldoffice_info_embed.add_field(name=":office: Field office", value=info_string)
-        fieldoffice_info_embed = fieldoffice_info_embed.set_footer(text=renew_time_string)
-
-        if self.fieldoffice_info_message is None:
-            history = await self.fieldoffice_info_channel.history().flatten()
-            if len(history) == 1 and history[0].author.id == self.bot_user.id:
-                self.fieldoffice_info_message = history[0]
-            else:
-                await self.fieldoffice_info_channel.purge(limit=None)
-                self.fieldoffice_info_message = await self.fieldoffice_info_channel.send(embed=fieldoffice_info_embed)
-                return
-
-        await self.fieldoffice_info_message.edit(embed=fieldoffice_info_embed)
-
     
-    def load_information(self):
-        self.progress = JsonStream().get_json_object(self.url)
-
-    
-    def convert_number_to_emoji(self, number: int):
-        number_str = str(number)
-        emoji_string = ":black_large_square:" * (3 - len(number_str))
-        for x in str(number):
-            if x == "0":
-                emoji_string += ":zero:"
-            elif x == "1":
-                emoji_string += ":one:"
-            elif x == "2":
-                emoji_string += ":two:"
-            elif x == "3":
-                emoji_string += ":three:"
-            elif x == "4":
-                emoji_string += ":four:"
-            elif x == "5":
-                emoji_string += ":five:"
-            elif x == "6":
-                emoji_string += ":six:"
-            elif x == "7":
-                emoji_string += ":seven:"
-            elif x == "8":
-                emoji_string += ":eight:"
-            elif x == "9":
-                emoji_string += ":nine:"
-
-        return emoji_string
-
-    
-    def get_fieldoffice_strings(self):
-        fieldoffice_list = []
-        for street_id, office in self.progress["fieldOffices"].items():
-            fieldoffice_list.append({
+    def load_information(self) -> None:
+        json_object = self.load_data_api(url=self.url)
+        self.fieldoffice_list = []
+        for street_id, office in json_object["fieldOffices"].items():
+            self.fieldoffice_list.append({
                 "difficulty": office["difficulty"] + 1,
                 "annexes": office["annexes"],
-                "street": self.zoneid_lookup[street_id],
+                "street": self.zoneid_dict[street_id],
                 "open": office["open"]
             })
 
-        fieldoffice_list = sorted(fieldoffice_list, key=operator.itemgetter("difficulty", "annexes"))
-
-        fieldoffice_string = ""
-        for office in fieldoffice_list:
-            is_open = ":green_circle:" if office["open"] else ":x:"
-            stars = ":black_large_square:" * (3 - office["difficulty"]) + ":star:" * office["difficulty"]
-            annexes = self.convert_number_to_emoji(office["annexes"])
-            street = office["street"]
-            fieldoffice_string += f"{is_open}　{stars}　{annexes}　{street}\n"
-        
-        return fieldoffice_string
+        self.fieldoffice_list = sorted(self.fieldoffice_list, key=operator.itemgetter("difficulty", "annexes"))
 
     
-    def get_info_string(self):
-        info_string = ""
-        info_string += ":black_large_square:　**難易度** 　　**Annexes**　**Street**\n"
-        info_string += self.get_fieldoffice_strings()
+    def make_info_strings(self) -> List[Dict[str, str]]:
+        info_string = "**Stars** 　　 **Annexes**　  　     **Street**\n"
+        
+        for office in self.fieldoffice_list:
+            is_open = ":green_circle:" if office["open"] else ":x:"
+            stars = ":black_large_square:" * (3 - office["difficulty"]) + \
+                    ":star:" * office["difficulty"]
+            annexes = self.convert_number_to_fullwidth(str(office["annexes"]).rjust(3))
+            street = office["street"]
+            info_string += f"{stars}　 {annexes}　 {is_open}  {street}\n"
+        
         info_string += "\n:green_circle:：Open\n" + \
                        ":x:：Closed\n\n"
-        renew_time_string = "最終更新　{}".format(datetime.now(timezone(timedelta(hours=+9), "JST")).strftime("%H:%M"))
         
-        return info_string, renew_time_string
+        return [{"name": self.embed_field_tytle, "value": info_string}]
+
+
+# TODO: Remake GroupTracker
+class GroupTracker(Tracker):
+    
+    def __init__(self, info_channel: TextChannel, bot_user: ClientUser) -> None:
+        super().__init__(info_channel, bot_user)
+
+    
+    def load_information(self) -> None:
+        return super().load_information()
+
+    
+    def make_info_strings(self) -> List[Dict[str, str]]:
+        return super().make_info_strings()

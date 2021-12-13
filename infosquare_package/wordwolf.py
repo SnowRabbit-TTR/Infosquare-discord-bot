@@ -9,15 +9,20 @@ import random
 import re
 import string
 from datetime import datetime
+from typing import Dict, Optional, Tuple
 
 import discord
+from discord.channel import TextChannel
+from discord.member import Member
+from discord.message import Message
+from discord.reaction import Reaction
 
 from . import embed_color
 
 
 class WordWolfGame:
 
-    def __init__(self, players: list, wolf_num: int, available_genre: list):
+    def __init__(self, players: list, wolf_num: int, available_genre: list) -> None:
         self.players = players
         self.wolf_num = wolf_num
         self.available_genre = available_genre
@@ -25,11 +30,11 @@ class WordWolfGame:
 
         self.available_question_list = []
         self.selected_question_ids = []
-        self.set_available_question(self.available_genre)
+        self.set_available_question()
 
 
-    def load_all_question(self):
-        json_file = "infosquare_package/data/question.json"
+    def load_all_question(self) -> Tuple[Dict, int]:
+        json_file = "infosquare_package/data/wordwolf/question.json"
 
         with open(json_file, "r") as f:
             all_question = json.load(f)
@@ -41,7 +46,7 @@ class WordWolfGame:
         return all_question, all_question_num
 
     
-    def set_available_question(self, available_genre: dict):
+    def set_available_question(self) -> None:
         if not self.available_question_list:
             self.selected_question_ids = []
 
@@ -54,9 +59,9 @@ class WordWolfGame:
                         self.available_question_list.append(question)
 
     
-    def generate_game(self):
+    def generate_game(self) -> dict:
         # Select question.
-        self.set_available_question(available_genre=self.available_genre)
+        self.set_available_question()
         random.shuffle(self.available_question_list)
         question = self.available_question_list.pop(0)
         self.selected_question_ids.append(question["id"])
@@ -80,26 +85,25 @@ class WordWolfGame:
         return setting
 
     
-    def set_players(self, players: list):
+    def set_players(self, players: list) -> None:
         self.players = players
 
     
-    def set_wolf_num(self, wolf_num: int):
+    def set_wolf_num(self, wolf_num: int) -> None:
         self.wolf_num = wolf_num
 
 
-    def set_available_genre(self, available_genre: list):
+    def set_available_genre(self, available_genre: list) -> None:
         self.available_genre = available_genre
 
 
-    def get_available_genre(self):
+    def get_available_genre(self) -> list:
         return self.available_genre
-
     
         
 class WordWolfGameMaster:
 
-    def __init__(self, players=[], wolf_num=1, available_genre=["food", "love", "life", "play"]):
+    def __init__(self, players=[], wolf_num=1, available_genre=["food", "love", "life", "play"]) -> None:
         self.players = players
         self.wolf_num = wolf_num
         self.available_genre = available_genre
@@ -119,7 +123,7 @@ class WordWolfGameMaster:
         self.wordwolf_game = WordWolfGame(players=players, wolf_num=wolf_num, available_genre=available_genre)
 
 
-    async def establish(self, message):
+    async def establish(self, message: Message) -> None:
         if len(self.players) == 0:
             self.add_player(message.author)
             await self.show_menu(message.channel)
@@ -129,17 +133,17 @@ class WordWolfGameMaster:
             await info_message.delete(delay=30)
 
 
-    async def show_menu(self, channel):
+    async def show_menu(self, channel: TextChannel) -> None:
         self.is_playing = False
         self.phase = "setting"
 
         # About member
         info_string = "**------- 参加者 -------**\n"
         for member in self.registered_player.values():
-            info_string += "{}\n".format(member.nick if member.nick is not None else member.name)
+            info_string += f"{member.nick if member.nick is not None else member.name}\n"
         if len(self.players) < 3:
             info_string += ":warning: __ゲームの開始には最低3人が必要です。__\n"
-        info_string += "\n人狼の数：{}\n".format(self.wolf_num)
+        info_string += f"\n人狼の数：{self.wolf_num}\n"
         if len(self.players) > 3 and self.check_wolf_num() == False:
             info_string += ":warning: __人狼の数が不正です。__\n"
         # About genre
@@ -147,7 +151,7 @@ class WordWolfGameMaster:
         available_genre = self.wordwolf_game.get_available_genre()
         info_string += "\n**------- お題のジャンル -------**\n"
         for i, (k, v) in enumerate(genres.items()):
-            info_string += "{0}: {1}  {2}\n".format(i+1, v, ":white_check_mark:" if k in available_genre else ":x:")
+            info_string += f"{i+1}: {v}  {':white_check_mark:' if k in available_genre else ':x:'}\n"
         info_string += "\n"
         # About how to operate
         info_string += ":arrow_forward:：ゲームスタート\n"
@@ -172,7 +176,7 @@ class WordWolfGameMaster:
             await self.menu_message.edit(embed=menu_embed)
 
 
-    async def join(self, reaction, user):
+    async def join(self, reaction: Reaction, user: Member) -> None:
         if self.menu_message is None:
             return
         if reaction.message.id != self.menu_message.id:
@@ -190,7 +194,7 @@ class WordWolfGameMaster:
         await self.show_menu(reaction.message.channel)
 
 
-    async def leave(self, reaction, user):
+    async def leave(self, reaction: Reaction, user: Member) -> None:
         if self.menu_message is None:
             return
         if reaction.message.id != self.menu_message.id:
@@ -211,7 +215,7 @@ class WordWolfGameMaster:
             await self.reset(reaction.message.channel)
     
 
-    async def start_game(self, reaction, user, recursive_channel=None):
+    async def start_game(self, reaction: Reaction, user: Member, recursive_channel: bool=None) -> None:
         if recursive_channel is None:
             if self.menu_message is None:
                 return
@@ -233,7 +237,7 @@ class WordWolfGameMaster:
         self.phase = "discussion"
         self.is_playing = True
         hash_value = "".join(random.choices(string.ascii_letters + string.digits, k=7))
-        hash_string = "【Hash: {}】".format(hash_value)
+        hash_string = f"【Hash: {hash_value}】"
         self.game_set = self.wordwolf_game.generate_game()
 
         # Send the word to players by DM.
@@ -241,7 +245,7 @@ class WordWolfGameMaster:
             player = self.registered_player[player_id]
             player_name = player.nick if player.nick is not None else player.name
             word = player_info["word"]
-            info_string = "{0}さんのお題は\n**{1}**\nです。".format(player_name, word)
+            info_string = f"{player_name}さんのお題は\n**{word}**\nです。"
             word_notice_embed = discord.Embed(title="**Word wolf** (beta)", color=self.embed_color)
             word_notice_embed = word_notice_embed.add_field(name="お題確認", value=info_string)
             word_notice_embed = word_notice_embed.set_footer(text=hash_string)
@@ -260,7 +264,7 @@ class WordWolfGameMaster:
         await self.start_thinking_message.add_reaction("💡")
     
 
-    async def show_result(self, reaction, user):
+    async def show_result(self, reaction: Reaction, user: Member) -> None:
         if self.start_thinking_message is None:
             return
         if reaction.message.id != self.start_thinking_message.id:
@@ -283,11 +287,11 @@ class WordWolfGameMaster:
             word = self.game_set[player_id]["word"]
             if self.game_set[player_id]["post"] == "wolf":
                 post = ":wolf:"
-                wolfs.append("**{}**さん".format(player_name))
+                wolfs.append(f"**{player_name}**さん")
             else:
                 post = ":bust_in_silhouette:"
-            info_string += "{0} {1}  :  {2}\n".format(post, player_name, word)
-        info_string += "\n人狼は{}でした。\n\n".format("、".join(wolfs))
+            info_string += f"{post} {player_name}  :  {word}\n"
+        info_string += f"\n人狼は{'、'.join(wolfs)}でした。\n\n"
         info_string += "同じメンバーで再戦する場合は:repeat:マーク、メニューに戻る場合は:wrench:マークを押してください。"
         
         result_embed = discord.Embed(title="**Word wolf** (beta)", color=self.embed_color)
@@ -298,7 +302,7 @@ class WordWolfGameMaster:
         await self.result_message.add_reaction("🔧")
 
 
-    async def continue_game(self, reaction, user):
+    async def continue_game(self, reaction: Reaction, user: Member) -> None:
         if self.result_message is None:
             return
         if reaction.message.id != self.result_message.id:
@@ -328,7 +332,7 @@ class WordWolfGameMaster:
             self.result_message = None
 
     
-    async def how_to_play_wordwolf(self, reaction, user):
+    async def how_to_play_wordwolf(self, reaction: Reaction, user: Member) -> None:
         if self.menu_message is None:
             return
         if reaction.message.id != self.menu_message.id:
@@ -350,7 +354,7 @@ class WordWolfGameMaster:
             else:
                 return
 
-        image_url = "https://raw.githubusercontent.com/SnowRabbit-TTR/Infosquare-discord-bot/master/infosquare_package/data/how_to_play_wordwolf.png"
+        image_url = "https://raw.githubusercontent.com/SnowRabbit-TTR/Infosquare-discord-bot/master/infosquare_package/data/wordwolf/how_to_play_wordwolf.png"
         
         how2play_embed = discord.Embed(title="**Word wolf** (beta)", color=self.embed_color)
         how2play_embed.set_image(url=image_url)
@@ -358,7 +362,7 @@ class WordWolfGameMaster:
         await self.how2play_message.delete(delay=show_time)
 
 
-    async def reset(self, channel, breaker=None):
+    async def reset(self, channel: TextChannel, breaker: Optional[Member]=None):
         if breaker is not None:
             if self.is_joined(breaker.id) == False:
                 return
@@ -377,14 +381,14 @@ class WordWolfGameMaster:
         await channel.send(info_string)
 
 
-    async def set_wolf_num(self, message):
+    async def set_wolf_num(self, message: Message) -> None:
         author_name = message.author.nick if message.author.nick is not None else message.author.name
         author_id = message.author.id
 
         if len(self.players) == 0:
             return
         if self.is_joined(author_id) == False:
-            info_string = "{}さんはワードウルフのグループに参加していません。\nグループに参加する場合は、メニュー画面の:person_raising_hand:を押してください。".format(author_name)
+            info_string = f"{author_name}さんはワードウルフのグループに参加していません。\nグループに参加する場合は、メニュー画面の:person_raising_hand:を押してください。"
             info_message = await message.channel.send(info_string)
             await info_message.delete(delay=30)
             return
@@ -405,7 +409,7 @@ class WordWolfGameMaster:
         
         self.wolf_num = wolf_num
         self.wordwolf_game.set_wolf_num(wolf_num)
-        info_string = "人狼の数を{}人に設定しました。".format(self.wolf_num)
+        info_string = f"人狼の数を{self.wolf_num}人に設定しました。"
         info_message = await message.channel.send(info_string)
         await info_message.delete(delay=30)
 
@@ -415,14 +419,14 @@ class WordWolfGameMaster:
         await self.show_menu(menu_channel)
 
 
-    async def set_available_genre(self, message):
+    async def set_available_genre(self, message: Message) -> None:
         author_name = message.author.nick if message.author.nick is not None else message.author.name
         author_id = message.author.id
 
         if len(self.players) == 0:
             return
         if self.is_joined(author_id) == False:
-            info_string = "{}さんはワードウルフのグループに参加していません。\nグループに参加する場合は、メニュー画面の:person_raising_hand:を押してください。".format(author_name)
+            info_string = f"{author_name}さんはワードウルフのグループに参加していません。\nグループに参加する場合は、メニュー画面の:person_raising_hand:を押してください。"
             info_message = await message.channel.send(info_string)
             await info_message.delete(delay=30)
             return
@@ -457,7 +461,7 @@ class WordWolfGameMaster:
         await self.show_menu(menu_channel)
 
 
-    def add_player(self, member):
+    def add_player(self, member: Member) -> None:
         player_id = member.id
         if player_id not in self.players:
             self.registered_player[player_id] = member
@@ -468,7 +472,7 @@ class WordWolfGameMaster:
             return False
 
 
-    def remove_player(self, member):
+    def remove_player(self, member: Member) -> None:
         player_id = member.id
         if player_id in self.players:
             del self.registered_player[player_id]
@@ -479,7 +483,7 @@ class WordWolfGameMaster:
             return False
 
 
-    def check_wolf_num(self, set_wolf_num=None):
+    def check_wolf_num(self, set_wolf_num: Optional[int]=None) -> bool:
         wolf_num = self.wolf_num if set_wolf_num is None else set_wolf_num
         if len(self.players) > 2 * wolf_num:
             return True
@@ -487,7 +491,7 @@ class WordWolfGameMaster:
             return False
 
     
-    def is_ready_for_game(self):
+    def is_ready_for_game(self) -> bool:
         if self.check_wolf_num == False:
             return False
         if len(self.players) < 3:
@@ -496,12 +500,11 @@ class WordWolfGameMaster:
         return True
 
 
-    def is_joined(self, player_id: int):
+    def is_joined(self, player_id: int) -> bool:
         if player_id in self.players:
             return True
         else:
             return False
-
 
 
 # TODO: Make updater of questions.

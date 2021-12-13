@@ -8,13 +8,15 @@ import random
 from datetime import datetime
 
 import discord
+from discord.channel import TextChannel
+from discord.message import Message
 
 from . import embed_color
 
 
 class MinesweeperBoard:
 
-    def __init__(self, bomb_num: int, row_num: int):
+    def __init__(self, bomb_num: int, row_num: int) -> None:
         self.bomb_num = bomb_num
         self.row_num = row_num
         self.stage = [[0 for x in range(row_num)] for y in range(row_num)]
@@ -34,7 +36,7 @@ class MinesweeperBoard:
         self.generate_minesweeper_map()
     
 
-    def generate_minesweeper_map(self):
+    def generate_minesweeper_map(self) -> None:
         for x in range(self.row_num):
             for y in range(self.row_num):
                 if self.stage[x][y] >= 100:
@@ -75,7 +77,7 @@ class MinesweeperBoard:
                         pass
 
         
-    def convert_map2string(self):
+    def convert_map2string(self) -> str:
         board_string = ""
 
         for x in range(self.row_num):
@@ -105,10 +107,9 @@ class MinesweeperBoard:
         return board_string
 
 
-
 class MinesweeperGameMaster:  
 
-    def __init__(self, bomb_num=7, row_num=7):
+    def __init__(self, bomb_num: int=7, row_num: int=7) -> None:
         self.board = None
         self.is_play = False
         self.timelimit = 2
@@ -118,7 +119,7 @@ class MinesweeperGameMaster:
         self.embed_color = embed_color.MINESWEEPER_COLOR
     
 
-    async def start_new_game(self, message, in_dm_channel=False):
+    async def start_new_game(self, message: Message, in_dm_channel: bool=False) -> None:
         if in_dm_channel == False:
             if self.check_multiple_startup(message.channel) == False:
                 info_string = "多重起動はできません。:no_good:"
@@ -133,12 +134,12 @@ class MinesweeperGameMaster:
         await minesweeper_message.delete(delay=self.timelimit * 60)
 
 
-    def generate_minesweeper_string(self, in_dm_channel=False):
+    def generate_minesweeper_string(self, in_dm_channel: bool=False) -> str:
         self.board = MinesweeperBoard(bomb_num=self.bomb_num, row_num=self.row_num)
-        minesweeper_string = "ガイコツの数は{}個です。\n".format(self.bomb_num)
+        minesweeper_string = f"ガイコツの数は{self.bomb_num}個です。\n"
         minesweeper_string += "一番下の行にはガイコツはいません。\n"
         if in_dm_channel == False:
-            minesweeper_string += "開始から{}分が経過すると、この盤面は自動的に消去されます。\n\n".format(self.timelimit)
+            minesweeper_string += f"開始から{self.timelimit}分が経過すると、この盤面は自動的に消去されます。\n\n"
         else:
             minesweeper_string += "\n"
         minesweeper_string += self.board.convert_map2string()
@@ -146,7 +147,7 @@ class MinesweeperGameMaster:
         return minesweeper_string
 
 
-    def check_multiple_startup(self, channel):
+    def check_multiple_startup(self, channel: TextChannel) -> bool:
         now_epochtime = int(datetime.now().strftime("%s"))
 
         if channel.id not in self.startup_channel:

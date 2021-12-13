@@ -4,20 +4,26 @@ Connect 4
 author: Snow Rabbit
 """
 
+from typing import Optional
+
 import discord
+from discord.channel import TextChannel
+from discord.member import Member
+from discord.message import Message
+from discord.reaction import Reaction
 
 from . import embed_color
 
 
 class Connect4Board:
 
-    def __init__(self, column_num=7, row_num=6):
+    def __init__(self, column_num: int=7, row_num: int=6) -> None:
         self.column_num = column_num
         self.row_num = row_num
         self.board = [[0 for x in range(self.column_num)] for y in range(self.row_num)]
 
     
-    def push(self, piece, column):
+    def push(self, piece: int, column: int) -> bool:
         is_push = False
         if self.board[0][column] == 0:
             for i in range(self.row_num-1, -1, -1):
@@ -28,7 +34,7 @@ class Connect4Board:
         return is_push
 
 
-    def is_filled(self):
+    def is_filled(self) -> bool:
         for i in range(0, self.row_num):
             for j in range(0, self.column_num):
                 if self.board[i][j] == 0:
@@ -36,7 +42,7 @@ class Connect4Board:
         return True
 
     
-    def check_winner(self):
+    def check_winner(self) -> int:
         for i in range(0, self.row_num):
             for j in range(0, self.column_num):
                 # FIXME: There is a bug for checking 2-dim list index.
@@ -92,7 +98,7 @@ class Connect4Board:
         return 0
 
     
-    def get_discord_string(self):
+    def get_discord_string(self) -> str:
         string = "\n:one: :two: :three: :four: :five: :six: :seven:\n"
         for xs in self.board:
             for i in range(0, self.column_num):
@@ -107,10 +113,9 @@ class Connect4Board:
         return string
 
 
-
 class Connect4GameMaster:
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.players = []
         self.embed_color = embed_color.CONNECT4_COLOR
         self.connect4_board = Connect4Board()
@@ -124,7 +129,7 @@ class Connect4GameMaster:
         self.now_turn_piece = 1  # 1 or -1
 
 
-    async def establish(self, message):
+    async def establish(self, message: Message) -> None:
         if len(self.players) == 0:
             self.add_player(message.author)
             await self.show_menu(message.channel)
@@ -134,7 +139,7 @@ class Connect4GameMaster:
             await info_message.delete(delay=30)
 
 
-    async def show_menu(self, channel):
+    async def show_menu(self, channel: TextChannel) -> None:
         self.is_playing = False
 
         # About member
@@ -149,8 +154,8 @@ class Connect4GameMaster:
             self.second_player_name = second_player.nick if second_player.nick is not None else second_player.name
         else:
             self.second_player_name = ""
-        info_string += "先攻 ： :yellow_square: {}\n".format(self.first_player_name)
-        info_string += "後攻 ： :red_square: {}\n".format(self.second_player_name)
+        info_string += f"先攻 ： :yellow_square: {self.first_player_name}\n"
+        info_string += f"後攻 ： :red_square: {self.second_player_name}\n"
         # About how to operate
         info_string += "\n:arrow_forward:：ゲームスタート\n"
         info_string += ":left_right_arrow:：先攻/後攻を交代する\n"
@@ -171,17 +176,17 @@ class Connect4GameMaster:
             await self.menu_message.edit(embed=menu_embed)
     
 
-    async def show_board(self, channel, result=None):
+    async def show_board(self, channel: TextChannel, result: Optional[int]=None) -> None:
         turn_first, turn_second = (":arrow_forward:", ":black_large_square:") if self.now_turn_piece == 1 else (":black_large_square:", ":arrow_forward:")
-        player_string = "{0} :yellow_square: **{1}**\n".format(turn_first, self.first_player_name)
-        player_string += "{0} :red_square: **{1}**\n".format(turn_second, self.second_player_name)
+        player_string = f"{turn_first} :yellow_square: **{self.first_player_name}**\n"
+        player_string += f"{turn_second} :red_square: **{self.second_player_name}**\n"
 
         board_string = self.connect4_board.get_discord_string()
         if result is not None:
             if result == 1:
-                board_string += "\n**{}さんの勝ちです！**".format(self.first_player_name)
+                board_string += f"\n**{self.first_player_name}さんの勝ちです！**"
             elif result == -1:
-                board_string += "\n**{}さんの勝ちです！**".format(self.second_player_name)
+                board_string += f"\n**{self.second_player_name}さんの勝ちです！**"
             elif result == 99:
                 board_string += "\n**引き分けです**"
             board_string += "\n\n:repeat:：同じメンバーで再戦する"
@@ -196,7 +201,7 @@ class Connect4GameMaster:
             await self.board_message.edit(embed=board_embed)
 
     
-    async def join(self, reaction, user):
+    async def join(self, reaction: Reaction, user: Member) -> None:
         if self.menu_message is None or reaction.message.id != self.menu_message.id:
             return
         if self.is_playing == True:
@@ -212,7 +217,7 @@ class Connect4GameMaster:
         await self.show_menu(reaction.message.channel)
 
 
-    async def leave(self, reaction, user):
+    async def leave(self, reaction: Reaction, user: Member) -> None:
         if self.menu_message is None or reaction.message.id != self.menu_message.id:
             return
         if self.is_joined(user.id) == False:
@@ -229,7 +234,7 @@ class Connect4GameMaster:
             await self.reset(reaction.message.channel)
 
 
-    async def switch_player(self, reaction, user):
+    async def switch_player(self, reaction: Reaction, user: Member) -> None:
         if self.menu_message is None or reaction.message.id != self.menu_message.id:
             return
         if self.is_joined(user.id) == False:
@@ -244,7 +249,7 @@ class Connect4GameMaster:
         await self.show_menu(reaction.message.channel)
 
 
-    async def start_game(self, reaction, user, recursive=False):
+    async def start_game(self, reaction: Reaction, user: Member, recursive: bool=False) -> None:
         if recursive == False:
             if self.menu_message is None or reaction.message.id != self.menu_message.id:
                 return
@@ -265,7 +270,7 @@ class Connect4GameMaster:
             await self.board_message.add_reaction(emoji_number)
 
     
-    async def push_board(self, reaction, user):
+    async def push_board(self, reaction: Reaction, user: Member) -> None:
         emoji_number_list = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣"]
         if self.board_message is None or reaction.message.id != self.board_message.id:
             return
@@ -304,7 +309,7 @@ class Connect4GameMaster:
             await self.board_message.add_reaction("🔧")
 
 
-    async def repeat_game_or_setting(self, reaction, user):
+    async def repeat_game_or_setting(self, reaction: Reaction, user: Member) -> None:
         if self.board_message is None or reaction.message.id != self.board_message.id:
             return
         if self.is_joined(user.id) == False:
@@ -327,7 +332,7 @@ class Connect4GameMaster:
             self.connect4_board.__init__()
 
 
-    async def reset(self, channel):
+    async def reset(self, channel: TextChannel) -> None:
         if self.menu_message is None:
             return
         else:
@@ -342,7 +347,7 @@ class Connect4GameMaster:
         await channel.send(info_string)
 
     
-    def add_player(self, member):
+    def add_player(self, member: Member) -> bool:
         player_id = member.id
         if self.is_joined(player_id) == False:
             self.players.append({"id": player_id, "member": member})
@@ -351,7 +356,7 @@ class Connect4GameMaster:
             return False
 
     
-    def remove_player(self, member):
+    def remove_player(self, member: Member) -> bool:
         player_id = member.id
         if self.is_joined(player_id) == True:
             for i, player in enumerate(self.players[:]):
@@ -363,7 +368,7 @@ class Connect4GameMaster:
             return False
 
     
-    def is_joined(self, player_id: int):
+    def is_joined(self, player_id: int) -> bool:
         for player in self.players:
             if player["id"] == player_id:
                 return True

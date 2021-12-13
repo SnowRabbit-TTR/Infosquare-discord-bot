@@ -1,6 +1,8 @@
 import os
+from datetime import datetime, timedelta, timezone
 
 import discord
+from discord.channel import DMChannel, TextChannel
 from discord.ext import tasks
 
 from infosquare_package.autodelete import AutoDeleteObserver
@@ -13,14 +15,15 @@ from infosquare_package.seaturtle_soup import SeaTurtleSoupSupporter
 from infosquare_package.wordwolf import WordWolfGameMaster
 
 
-client = discord.Client()
-
 TOKEN = os.environ["INFOSQUARE_BOT_TOKEN"]
 DISTRICT_CHANNEL_ID = int(os.environ["DISTRICT_CHANNEL_ID"])
 INVASION_CHANNEL_ID = int(os.environ["INVASION_CHANNEL_ID"])
 SERVER_CHANNEL_ID = int(os.environ["SERVER_CHANNEL_ID"])
 FIELDOFFICE_CHANNEL_ID = int(os.environ["FIELDOFFICE_CHANNEL_ID"])
 DEBUG_ID = int(os.environ["DEBUG_ID"])
+RENEW_INFO_INTERVAL = 10
+
+client = discord.Client()
 
 autodelete_observer = AutoDeleteObserver()
 connect4_gamemaster = Connect4GameMaster()
@@ -30,49 +33,35 @@ wordwolf_gamemaster = WordWolfGameMaster()
 
 @client.event
 async def on_ready():
-    global district_tracker
-    global invasion_tracker
-    global server_tracker
-    global fieldoffice_tracker
-    global seaturtle_supporter
-    global invasion_countup
+    global district_tracker, invasion_tracker, server_tracker, fieldoffice_tracker, seaturtle_supporter
 
-    bot_user = client.user
-
-    district_info_channel = client.get_channel(DISTRICT_CHANNEL_ID)
-    district_tracker = DistrictTracker(district_info_channel=district_info_channel, bot_user=bot_user)
-    invasion_info_channel = client.get_channel(INVASION_CHANNEL_ID)
-    invasion_tracker = InvasionTracker(invasion_info_channel=invasion_info_channel, bot_user=bot_user)
-    server_info_channel = client.get_channel(SERVER_CHANNEL_ID)
-    server_tracker = ServerTracker(server_info_channel=server_info_channel, bot_user=bot_user)
-    fieldoffice_info_channel = client.get_channel(FIELDOFFICE_CHANNEL_ID)
-    fieldoffice_tracker = FieldOfficeTracker(fieldoffice_info_channel=fieldoffice_info_channel, bot_user=bot_user)
-
-    seaturtle_supporter = SeaTurtleSoupSupporter(bot_user=bot_user)
+    district_tracker = DistrictTracker(info_channel=client.get_channel(DISTRICT_CHANNEL_ID),
+                                       bot_user=client.user)
+    invasion_tracker = InvasionTracker(info_channel=client.get_channel(INVASION_CHANNEL_ID),
+                                       bot_user=client.user)
+    server_tracker = ServerTracker(info_channel=client.get_channel(SERVER_CHANNEL_ID), 
+                                   bot_user=client.user)
+    fieldoffice_tracker = FieldOfficeTracker(info_channel=client.get_channel(FIELDOFFICE_CHANNEL_ID),
+                                             bot_user=client.user)
+    seaturtle_supporter = SeaTurtleSoupSupporter(bot_user=client.user)
 
     renew_infomation.start()
-
-    invasion_countup = 0
     countdown.start()
 
     print("Login suceeded.")
 
 
-@tasks.loop(seconds=10)
+@tasks.loop(seconds=RENEW_INFO_INTERVAL)
 async def renew_infomation():
     await district_tracker.notice()
     await server_tracker.notice()
     await fieldoffice_tracker.notice()
+    invasion_tracker.load_information()
 
 
 @tasks.loop(seconds=1)
 async def countdown():
-    global invasion_countup
-    renew_interval = 10
-
-    is_renew = True if invasion_countup % renew_interval == 0 else False
-    await invasion_tracker.countdown(interval=1, is_renew=is_renew)
-    invasion_countup += 1
+    await invasion_tracker.countdown(interval=1)
 
 
 @client.event
@@ -83,9 +72,8 @@ async def on_message(message):
         return
     
     # Watch only message sended on TextChannel.
-    # Target: Autodelete app, Minesweeper, Find 4 and Word wolf.
-    # HACK: Checking channel method is too dirty.
-    if str(message.channel.__class__) == "<class 'discord.channel.TextChannel'>":
+    # Target: Autodelete app, Minesweeper, Find 4, and Word wolf.
+    if isinstance(message.channel, TextChannel):
 
         """
         Auto message delete app
@@ -170,9 +158,8 @@ async def on_message(message):
 
 
     # Watch only message sended on DMChannel.
-    # Target: Minesweeper, Nazotoki(Limited edition) and Group Notificator(Temporally unusable).
-    # HACK: Checking channel method is too dirty.
-    if str(message.channel.__class__) == "<class 'discord.channel.DMChannel'>":
+    # Target: Minesweeper and Group Notificator (Temporally unusable).
+    if isinstance(message.channel, DMChannel):
 
         """
         Minesweeper on DMChannel
@@ -182,9 +169,9 @@ async def on_message(message):
         if message.content in ["/minesweeper", "/Minesweeper", "/マインスイーパー", "/マインスイーパ", "/まいんすいーぱー", "/まいんすいーぱ"]:
             await minesweeper_gamemaster.start_new_game(message, in_dm_channel=True)
 
-        # TODO: Make debug option.
-        #sended_time = datetime.now(timezone(timedelta(hours=+9), "JST")).strftime("%Y/%m/%d %H:%M:%S")
-        #await client.get_user(DEBUG_ID).send(f"{sended_time}\n**{message.author}**\n{message.content}")
+        sended_time = datetime.now(timezone(timedelta(hours=+9), "JST")).strftime("%Y/%m/%d %H:%M:%S")
+        debugger = await client.fetch_user(user_id=DEBUG_ID)
+        await debugger.send(f"{sended_time}\n**{message.author}**\n{message.content}")
 
 
 @client.event
