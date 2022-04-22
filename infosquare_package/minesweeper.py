@@ -8,7 +8,7 @@ import random
 from datetime import datetime
 
 import discord
-from discord.channel import TextChannel
+from discord.channel import DMChannel, TextChannel
 from discord.message import Message
 
 from . import embed_color
@@ -105,6 +105,18 @@ class MinesweeperBoard:
             board_string += "\n"
 
         return board_string
+
+
+class MinesweeperListner:
+
+    def __init__(self) -> None:
+        self.gamemaster = MinesweeperGameMaster()
+    
+
+    async def listen_command(self, message: Message) -> None:
+        if message.content in ["/minesweeper", "/Minesweeper", "/マインスイーパー", "/マインスイーパ", "/まいんすいーぱー", "/まいんすいーぱ"]:
+            in_dm_channel = isinstance(message.channel, DMChannel)
+            await self.gamemaster.start_new_game(message, in_dm_channel=in_dm_channel)
 
 
 class MinesweeperGameMaster:  

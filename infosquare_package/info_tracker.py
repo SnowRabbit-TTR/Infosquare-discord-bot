@@ -41,7 +41,6 @@ class Tracker:
             Title string of the information.
             (It is not the `title` argument of `discord.Embed`.)
             Defined in the subclasses and used inside `make_info_strings`.
-
     """
 
     def __init__(self, info_channel: TextChannel, bot_user: ClientUser) -> None:
@@ -301,7 +300,7 @@ class InvasionTracker(Tracker):
 
 
     def get_invasion_string(self, invasion: dict) -> str:
-        if invasion["is_mega"] == True:
+        if invasion["is_mega"]:
             time_string = "MEGA INVASION!"
             defeat_string = "---"
         else:

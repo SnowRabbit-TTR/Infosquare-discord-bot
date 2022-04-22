@@ -9,9 +9,28 @@ import re
 from discord.message import Message
 
 
+class AutoDeleteListner:
+
+    def __init__(self) -> None:
+        self.observer = AutoDeleteObserver()
+
+
+    async def listen_command(self, message: Message) -> None:
+        # Stop auto delete app.
+        if message.content.replace(" ", "").lower() == "/stopautodelete":
+            await self.observer.stop_autodelete(message)
+
+        # Find the message of auto delete app user.
+        await self.observer.observe(message)
+
+        # Start auto delete app.
+        if message.content.replace(" ", "").lower().startswith("/startautodelete"):
+            await self.observer.start_autodelete(message)
+
+
 class AutoDeleteObserver:
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.user_ids = {}
 
     
@@ -19,7 +38,7 @@ class AutoDeleteObserver:
         author_id = message.author.id
         author_name = message.author.nick if message.author.nick is not None else message.author.name
 
-        if self.is_user_registered(author_id) == True:
+        if self.is_user_registered(author_id):
             info_string = f"{author_name}さんはメッセージ自動削除botを既に起動しています。\n終了する場合は`/stop autodelete`を入力してください。"
             info_message = await message.channel.send(info_string)
             await info_message.delete(delay=30)
