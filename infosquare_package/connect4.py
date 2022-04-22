@@ -5,7 +5,6 @@ author: Snow Rabbit
 """
 
 from datetime import datetime
-from pydoc import doc
 from typing import Optional, Tuple, Union
 
 import discord

@@ -9,10 +9,10 @@ import random
 import re
 import string
 from datetime import datetime
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 
 import discord
-from discord.channel import DMChannel, TextChannel
+from discord.channel import TextChannel
 from discord.member import Member
 from discord.message import Message
 from discord.reaction import Reaction

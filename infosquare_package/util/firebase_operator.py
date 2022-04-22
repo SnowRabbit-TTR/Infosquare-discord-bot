@@ -22,5 +22,5 @@ def set_doc(collection_name: str, doc_dict: dict) -> None:
     docs.set(doc_dict)
 
 
-def get_doc_list(collection_name: str) -> list[dict]:
+def get_doc_list(collection_name: str) -> list:
     return [doc.to_dict() for doc in db.collection(collection_name).get()]

@@ -3,10 +3,9 @@ Sea turtle soup supporter
 =====
 author: Snow Rabbit
 """
-from typing import Union
 
 import discord
-from discord.channel import DMChannel, TextChannel
+from discord.channel import TextChannel
 from discord.member import Member
 from discord.message import Message
 from discord.reaction import Reaction
