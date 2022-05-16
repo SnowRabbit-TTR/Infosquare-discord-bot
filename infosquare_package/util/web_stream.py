@@ -1,5 +1,6 @@
 import json
 import urllib.request
+from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -27,9 +28,12 @@ class HTMLStream:
         return html_object
 
     
-    def get_soup_object(self, url: str, soup_class: str) -> ResultSet:
+    def get_soup_object(self, url: str, tag: Optional[str]=None, class_: Optional[str]=None) -> ResultSet:
         html_object = self.get_html_object(url)
         soup = BeautifulSoup(html_object.content, "html.parser")
-        pr_soup = soup.find_all(class_=soup_class)
+        if class_ is not None:
+            pr_soup = soup.find_all(class_=class_)
+        else:
+            pr_soup = soup.find_all(tag)
 
         return pr_soup

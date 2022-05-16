@@ -294,7 +294,7 @@ class Connect4GameMaster:
         doc_list = firebase_operator.get_doc_list("findfour_results")
         all_match_num = len(doc_list)
         vs_ai_num = len([doc for doc in doc_list if doc["vs_ai"]])
-        ai_win_num = len([doc for doc in doc_list if doc["vs_ai"] and 
+        ai_win_num = len([doc for doc in doc_list if doc["vs_ai"] and doc["winner"] >= 0 and
                           doc["players"][doc["winner"]] == self.bot_user.id])
         return all_match_num, vs_ai_num, ai_win_num
 

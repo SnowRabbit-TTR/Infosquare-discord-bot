@@ -4,10 +4,12 @@ Information tracker
 author: Snow Rabbit
 """
 
+import ast
 import operator
+import re
 from abc import abstractmethod
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import discord
 from bs4.element import ResultSet
@@ -94,8 +96,11 @@ class Tracker:
         return JsonStream().get_json_object(url=url)
 
 
-    def load_data_scraping(self, url: str) -> ResultSet:
-        return HTMLStream().get_soup_object(url=url, soup_class="list-group-item sub-component")
+    def load_data_scraping(self, url: str, tag: Optional[str]=None, class_: Optional[str]=None) -> ResultSet:
+        if class_ is not None:
+            return HTMLStream().get_soup_object(url=url, class_=class_)
+        else:
+            return HTMLStream().get_soup_object(url=url, tag=tag)
 
     
     def convert_number_to_emoji(self, number: Union[int, str]) -> str:
@@ -195,7 +200,7 @@ class ServerTracker(Tracker):
 
     
     def load_information(self) -> None:
-        self.pr_soup = self.load_data_scraping(url=self.url)
+        self.pr_soup = self.load_data_scraping(url=self.url, class_="list-group-item sub-component")
 
     
     def make_info_strings(self) -> List[Dict[str, str]]:
@@ -385,16 +390,102 @@ class FieldOfficeTracker(Tracker):
         return [{"name": self.embed_field_tytle, "value": info_string}]
 
 
-# TODO: Remake GroupTracker
-class GroupTracker(Tracker):
+
+class HQGroupTracker(Tracker):
     
     def __init__(self, info_channel: TextChannel, bot_user: ClientUser) -> None:
         super().__init__(info_channel, bot_user)
+        self.embed_color: int = embed_color.HQGROUP_INFO_COLOR
+        self.embed_field_tytle: str = ":busts_in_silhouette: ToonHQグループ情報"
+        self.url: str = "https://toonhq.org/groups/"
+
+        self.group_list: list
+        self.allow_group_list = [3, 5, 6, 7, 8, 9, 46,]
 
     
     def load_information(self) -> None:
-        return super().load_information()
+        pr_soup = self.load_data_scraping(url=self.url, tag="script")
+        dict_string = re.search(r"window.STATE.*;", pr_soup[2].text).group()
+        replace_list = [
+            ("window.STATE = ", ""),
+            ("true", "True"),
+            ("false", "False"),
+            ("null", "None"),
+        ]
+        for rep in replace_list:
+            dict_string = dict_string.replace(rep[0], rep[1])
+        info_dict = ast.literal_eval(dict_string[:-1])
+
+        def search_id(data_list: list, search_id_name: str, search_id: int, 
+                      return_id: Optional[str]=None) -> Any:
+            for info in data_list:
+                if info[search_id_name] == search_id:
+                    if return_id is not None:
+                        return info[return_id]
+                    else:
+                        return info
+
+        self.group_list = []
+
+        for g in info_dict["groups"]:
+            if g["type"] not in self.allow_group_list:
+                continue
+            # District
+            district_name = search_id(data_list=info_dict["districts"], search_id_name="id",
+                                      search_id=g["district"], return_id="name")
+            # Location
+            location_name = search_id(data_list=info_dict["locations"], search_id_name="id",
+                                      search_id=g["location"], return_id="name")
+            # Group name
+            # Main Group name
+            main_group_name = search_id(data_list=info_dict["group_types"], search_id_name="id",
+                                        search_id=g["type"], return_id="name")
+            # Optional
+            optionals = []
+            for key, value in g["options"].items():
+                option_list = search_id(data_list=info_dict["group_types"], search_id_name="id", search_id=g["type"], return_id="options")
+                value_list = search_id(data_list=option_list, search_id_name="id", search_id=int(key), return_id="values")
+                optional_name = search_id(data_list=value_list, search_id_name="id", search_id=value, return_id="name")
+                optionals.append(optional_name)
+            optionals.append(main_group_name)
+            
+            if g["type"] == 6:  # DA Office
+                optionals.reverse()
+            
+            group_name = " ".join(optionals)
+
+            max_players = search_id(data_list=info_dict["group_types"], search_id_name="id", search_id=g["type"], return_id="max_players")
+            now_players = sum([member["num_players"] for member in g["members"] if member["left"] is None])
+            
+            self.group_list.append({
+                "district": district_name,
+                "location": location_name,
+                "name": group_name,
+                "max_players": max_players,
+                "now_players": now_players,
+            })
 
     
     def make_info_strings(self) -> List[Dict[str, str]]:
-        return super().make_info_strings()
+        info_string_list = [{
+            "name": self.embed_field_tytle,
+            "value": "現在設立中の一部のコグ本部系グループおよびField Officeのグループを表示しています。\n" + \
+                     "グループに参加するには**[Toon HQ](https://toonhq.org/groups/)**にアクセスしてください。\n"
+        }]
+        for group in self.group_list:
+            if group["now_players"] == group["max_players"]:
+                status = ":red_circle:"
+            else:
+                status = ":green_circle:"
+            group_name = f"**{status} {group['name']}**"
+
+            info_string = f"ロビー ： **{group['district']}**\n" + \
+                          f"場所 ： **{group['location']}**\n" + \
+                          f"人数 ： **{group['now_players']} / {group['max_players']}**\n\n"
+
+            info_string_list.append({
+                "name": group_name,
+                "value": info_string
+            })
+        
+        return info_string_list
