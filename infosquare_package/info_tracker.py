@@ -390,7 +390,6 @@ class FieldOfficeTracker(Tracker):
         return [{"name": self.embed_field_tytle, "value": info_string}]
 
 
-
 class HQGroupTracker(Tracker):
     
     def __init__(self, info_channel: TextChannel, bot_user: ClientUser) -> None:
@@ -400,7 +399,7 @@ class HQGroupTracker(Tracker):
         self.url: str = "https://toonhq.org/groups/"
 
         self.group_list: list
-        self.allow_group_list = [3, 5, 6, 7, 8, 9, 46,]
+        self.allow_group_list: list = [3, 5, 6, 7, 8, 9, 46,]
 
     
     def load_information(self) -> None:
@@ -454,7 +453,7 @@ class HQGroupTracker(Tracker):
             
             group_name = " ".join(optionals)
 
-            max_players = search_id(data_list=info_dict["group_types"], search_id_name="id", search_id=g["type"], return_id="max_players")
+            max_players = g["max_players"]
             now_players = sum([member["num_players"] for member in g["members"] if member["left"] is None])
             
             self.group_list.append({
