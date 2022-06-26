@@ -23,7 +23,8 @@ from .util.web_stream import HTMLStream, JsonStream
 
 
 class Tracker:
-    """Tracker
+    """
+    Tracker
     ----------
 
     Super class of the tracker that collect and display information.
@@ -36,7 +37,7 @@ class Tracker:
             The bot user to be used for tracking.
         info_message (:class:`Optional[Message]`):
             Message displaying information.
-            It is set to None at initialization.
+            It is set to :class:`None`: at initialization.
         embed_color: (:class:`int`): 
             Hex value of color for `discord.Embed`.
         embed_field_tytle: (:class:`str`): 
@@ -361,16 +362,20 @@ class FieldOfficeTracker(Tracker):
     
     def load_information(self) -> None:
         json_object = self.load_data_api(url=self.url)
+        
         self.fieldoffice_list = []
-        for street_id, office in json_object["fieldOffices"].items():
-            self.fieldoffice_list.append({
-                "difficulty": office["difficulty"] + 1,
-                "annexes": office["annexes"],
-                "street": self.zoneid_dict[street_id],
-                "open": office["open"]
-            })
-
-        self.fieldoffice_list = sorted(self.fieldoffice_list, key=operator.itemgetter("difficulty", "annexes"))
+        # FIXME: It seems that sometimes 'load_data_api(url)' may return 'None'.
+        try:
+            for street_id, office in json_object["fieldOffices"].items():
+                self.fieldoffice_list.append({
+                    "difficulty": office["difficulty"] + 1,
+                    "annexes": office["annexes"],
+                    "street": self.zoneid_dict[street_id],
+                    "open": office["open"]
+                })
+            self.fieldoffice_list = sorted(self.fieldoffice_list, key=operator.itemgetter("difficulty", "annexes"))
+        except:
+            print("WARNING: 'load_data_api(url)' might return 'None'.")
 
     
     def make_info_strings(self) -> List[Dict[str, str]]:

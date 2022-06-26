@@ -4,6 +4,8 @@ Sea turtle soup supporter
 author: Snow Rabbit
 """
 
+from typing import Optional
+
 import discord
 from discord.channel import TextChannel
 from discord.member import Member
@@ -41,7 +43,7 @@ class SeaTurtleSoupListner:
         # Make reaction to question messages.
         elif message.content.endswith(("？", "?")):
             conditions = [self.supporter.is_playing,
-                          message.channel.id == self.supporter.menu_message.channel.id]
+                          message.channel.id == self.supporter.get_menu_message_id()]
             if all(conditions):
                 await self.supporter.make_reaction(message)
 
@@ -127,3 +129,10 @@ class SeaTurtleSoupSupporter:
                 await reaction.message.remove_reaction(r, self.bot_user)
 
         del self.questions[reaction.message.id]
+
+
+    def get_menu_message_id(self) -> Optional[int]:
+        if self.menu_message is not None:
+            return self.menu_message.channel_id
+        else:
+            return None
